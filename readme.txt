@@ -1,10 +1,14 @@
-Summary
+SUMMARY
 This is a fast, basic implementation of Conway's Game of Life, using the SDL2
 library for graphics. The program uses a torodial array, which ``rolls over''
 when life reaches one edge of the screen. The program does not use advanced
-algorithms such as HashLife, because it's purpose was to experiment with 
-optimizations involving changes in a program's implementation as opposed to 
+algorithms such as HashLife, because it's purpose was to experiment with
+optimizations involving changes in a program's implementation as opposed to
 algorithm.
+
+COMPILING
+Nothing complicated, run something among the lines of:
+gcc -O2 -lpthread -lSDL2 -o life life.c
 
 TODO
 - Make cell count independent of window size
