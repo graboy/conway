@@ -3,12 +3,15 @@
 #include <stdlib.h>
 #include <math.h>
 #include <unistd.h>
+#include <time.h>
 #include <pthread.h>
 #include <SDL2/SDL.h>
 
 #define WIDTH 800
 #define HEIGHT 600
-#define THREAD_COUNT 4
+
+#define TIME_THREAD_SLEEP 1000
+#define FRAMES_PER_SECOND 30
 
 #define MAX_PATTERN_LEN 3
 #define SUSPEND_DELAY 20
@@ -82,9 +85,10 @@ long write_log_pos;
 long last_log_pos;
 pthread_mutex_t write_log_mutex;
 
-int threadids[THREAD_COUNT];
-pthread_t threads[THREAD_COUNT];
-bool thread_run[THREAD_COUNT];
+int threadcount = 4;
+int *threadids;
+pthread_t *threads;
+bool *thread_run;
 
 void *thread_calc_cells(void *arg)
 {
@@ -94,12 +98,15 @@ void *thread_calc_cells(void *arg)
 
     while (running)
     {
+        if (thread_run[tid] == false)
+        {
         /* I think this is actually enough to slow down the program */
-        while (thread_run[tid] == false)
             usleep(1);
+            continue;
+        }
 
-        int min = last_log_pos * tid / THREAD_COUNT;
-        int max = last_log_pos * (tid + 1) / THREAD_COUNT;
+        int min = last_log_pos * tid / threadcount;
+        int max = last_log_pos * (tid + 1) / threadcount;
 
         int i;
         for (i = min; i < max; i++)
@@ -117,7 +124,7 @@ void step_until(unsigned int frame)
     {
         Cell *c;
         int i;
-        for (i = 0; i < THREAD_COUNT; i++)
+        for (i = 0; i < threadcount; i++)
             thread_run[i] = true;
 
         bool allrunning = true;
@@ -126,7 +133,7 @@ void step_until(unsigned int frame)
             usleep(1);
 
             bool tmp = false;
-            for (i = 0; i < THREAD_COUNT; i++)
+            for (i = 0; i < threadcount; i++)
                 tmp = tmp || thread_run[i];
 
             allrunning = tmp;
@@ -372,7 +379,7 @@ void init(void)
     proceed_step();
 
     /* start threads */
-    for (i = 0; i < THREAD_COUNT; i++)
+    for (i = 0; i < threadcount; i++)
     {
         threadids[i] = i;
         pthread_create(&threads[i], NULL, &thread_calc_cells, &threadids[i]);
@@ -386,78 +393,78 @@ void handle_input(void)
     {
         switch (e.type)
         {
-            case SDL_KEYDOWN:
-                switch (e.key.keysym.sym)
-                {
-                    case SDLK_SPACE:
-                        paused = !paused;
-                        break;
+        case SDL_KEYDOWN:
+            switch (e.key.keysym.sym)
+            {
+            case SDLK_SPACE:
+                paused = !paused;
+                break;
 
-                    case SDLK_RETURN:
-                        paused = true;
-                        step_until(step + 1);
-                        draw_screen();
-                        break;
+            case SDLK_RETURN:
+                paused = true;
+                step_until(step + 1);
+                draw_screen();
+                break;
 
-                    case SDLK_UP:
-                        set_zoom(ZOOM*2);
-                        break;
+            case SDLK_UP:
+                set_zoom(ZOOM*2);
+                break;
 
-                    case SDLK_DOWN:
-                        set_zoom(ZOOM/2);
-                        break;
+            case SDLK_DOWN:
+                set_zoom(ZOOM/2);
+                break;
 
-                    case SDLK_LEFT:
-                        if (speed > 1)
-                            speed--;
-                        break;
+            case SDLK_LEFT:
+                if (speed > 1)
+                    speed--;
+                break;
 
-                    case SDLK_RIGHT:
-                        speed++;
-                        break;
+            case SDLK_RIGHT:
+                speed++;
+                break;
 
-                    case SDLK_k:
-                        movingY = -1;
-                        break;
+            case SDLK_k:
+                movingY = -1;
+                break;
 
-                    case SDLK_h:
-                        movingX = -1;
-                        break;
+            case SDLK_h:
+                movingX = -1;
+                break;
 
-                    case SDLK_j:
-                        movingY = 1;
-                        break;
+            case SDLK_j:
+                movingY = 1;
+                break;
 
-                    case SDLK_l:
-                        movingX = 1;
-                        break;
-                }
-            break;
+            case SDLK_l:
+                movingX = 1;
+                break;
+            }
+        break;
 
-            case SDL_MOUSEMOTION:
-            /*
-                mx = e.motion.x;
-                my = e.motion.y;
-                if (mx > WIDTH - 5)
-                    movingX = 5;
-                else if (mx < 5)
-                    movingX = -5;
-                else
-                    movingX = 0;
+        case SDL_MOUSEMOTION:
+        /*
+            mx = e.motion.x;
+            my = e.motion.y;
+            if (mx > WIDTH - 5)
+                movingX = 5;
+            else if (mx < 5)
+                movingX = -5;
+            else
+                movingX = 0;
 
-                if (my > HEIGHT - 5)
-                    movingY = 5;
-                else if (my < 5)
-                    movingY = -5;
-                else
-                    movingY = 0;
-            */
-            break;
+            if (my > HEIGHT - 5)
+                movingY = 5;
+            else if (my < 5)
+                movingY = -5;
+            else
+                movingY = 0;
+        */
+        break;
 
-            case SDL_MOUSEBUTTONDOWN:
-            case SDL_QUIT:
-                running = 0;
-            break;
+        case SDL_MOUSEBUTTONDOWN:
+        case SDL_QUIT:
+            running = 0;
+        break;
         }
     }
 }
@@ -472,23 +479,42 @@ int main(int argc, char* argv[])
     for (i = 0; i < argc; i++)
     {
         char* arg = argv[i];
-        if ((arg[0] == '-') && (arg[1] == 'f'))
+        if ((arg[i] == '-'))
         {
-            gui = false;
-            sscanf(argv[i+1], "%i", &maxstep);
+            if (arg[i+1] == 'f')
+            {
+                gui = false;
+                sscanf(argv[i+2], "%i", &maxstep);
+            }
+            else if (arg[i+1] == 'p')
+            {
+                paused = true;
+            }
+            else if (arg[i+1] == 't')
+            {
+                sscanf(argv[i+2], "%i", &threadcount);
+            }
+            else
+            {
+                printf("Unknown argument: \"-%c\"", arg[1]);
+                return 0;
+            }
         }
-        else if ((arg[0] == '-') && (arg[1] == 'p'))
-            paused = true;
     }
 
 
+    threadids = malloc(sizeof(int) * threadcount);
+    threads = malloc(sizeof(pthread_t) * threadcount);
+    thread_run = malloc((threadcount + 1) / 8);
+
     /* Large Block */
+    /*
     int x, y;
     for (x = WIDTH/2 - 100; x < (WIDTH/2 + 100); x++) for (y = HEIGHT/2 - 100; y < (HEIGHT/2 + 100); y++)
         cellArray[x][y].alive[NOW] = true;
+    */
 
     /* R-pentomino */
-    /*
     int x = WIDTH/2;
     int y = HEIGHT/2;
     cellArray[x  ][y  ].alive[NOW] = true;
@@ -496,7 +522,6 @@ int main(int argc, char* argv[])
     cellArray[x  ][y+1].alive[NOW] = true;
     cellArray[x+1][y+1].alive[NOW] = true;
     cellArray[x  ][y-1].alive[NOW] = true;
-    */
 
     init();
 
@@ -531,6 +556,13 @@ int main(int argc, char* argv[])
 
     /* ensure other threads terminate */
     running = false;
+
+    for (i = 0; i < threadcount; i++)
+        pthread_join(threads[i], NULL);
+
+    free(threadids);
+    free(threads);
+    free(thread_run);
 
     return 0;
 }
